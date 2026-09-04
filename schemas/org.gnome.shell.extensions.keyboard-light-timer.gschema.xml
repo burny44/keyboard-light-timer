@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="keyboard-light-timer">
+  <schema id="org.gnome.shell.extensions.keyboard-light-timer"
+          path="/org/gnome/shell/extensions/keyboard-light-timer/">
+    <key name="timeout-seconds" type="i">
+      <default>30</default>
+      <summary>Keyboard backlight idle timeout</summary>
+      <description>
+        Seconds of inactivity before the keyboard backlight turns off.
+        Use 0 to disable the timer (light stays on until you turn it off).
+        Range is 0–30 seconds.
+      </description>
+      <range min="0" max="30"/>
+    </key>
+  </schema>
+</schemalist>

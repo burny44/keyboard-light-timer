@@ -1,0 +1,9 @@
+{
+    "uuid": "keyboard-light-timer@burny",
+    "name": "Keyboard Light Timer",
+    "description": "Adds an idle timeout to GNOME's native keyboard backlight Quick Settings control. Turns the backlight off after inactivity and restores the previous level on activity.",
+    "shell-version": ["45", "46", "47", "48", "49", "50"],
+    "settings-schema": "org.gnome.shell.extensions.keyboard-light-timer",
+    "url": "https://github.com/burny44/keyboard-light-timer",
+    "version-name": "1.1"
+}
