@@ -2,7 +2,9 @@
 
 GNOME Shell extension that adds an idle timeout to the **native** keyboard backlight control in Quick Settings.
 
-After a period of inactivity the backlight turns off. The previous brightness is restored on the next key or mouse event.
+- After a period with no keyboard, mouse, or touch input the backlight turns off
+- Playback (YouTube, movies, etc.) does **not** keep the light on — only real input counts
+- The previous brightness is restored on the next key or mouse event
 
 Compatible with **GNOME Shell 45–50**.
 
