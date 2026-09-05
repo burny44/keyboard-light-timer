@@ -2,6 +2,7 @@ import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
+import Meta from 'gi://Meta';
 import St from 'gi://St';
 
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
@@ -102,14 +103,15 @@ export default class KeyboardLightTimerExtension extends Extension {
         this._lastBrightness = null;
         this._ignoreChanges = false;
         this._ignoreSource = 0;
-        this._pollSource = 0;
-        this._stageHandler = 0;
-        this._lastActivityUs = GLib.get_monotonic_time();
+        this._idleWatchId = 0;
+        this._activeWatchId = 0;
         this._injectSource = 0;
         this._injectTries = 0;
         this._sliderItem = null;
         this._separator = null;
         this._menuItems = [];
+
+        this._idleMonitor = global.backend.get_core_idle_monitor();
 
         this._proxy = new BrightnessProxy(Gio.DBus.session, BUS_NAME, OBJECT_PATH,
             (proxy, error) => {
@@ -152,6 +154,7 @@ export default class KeyboardLightTimerExtension extends Extension {
         this._settings?.disconnectObject(this);
         this._settings = null;
 
+        this._idleMonitor = null;
         this._savedBrightness = null;
         this._lastBrightness = null;
     }
@@ -240,107 +243,75 @@ export default class KeyboardLightTimerExtension extends Extension {
     }
 
     _clearWatches() {
-        this._stopPoll();
-        if (this._stageHandler) {
-            global.stage.disconnect(this._stageHandler);
-            this._stageHandler = 0;
+        if (!this._idleMonitor)
+            return;
+
+        if (this._idleWatchId) {
+            this._idleMonitor.remove_watch(this._idleWatchId);
+            this._idleWatchId = 0;
+        }
+        if (this._activeWatchId) {
+            this._idleMonitor.remove_watch(this._activeWatchId);
+            this._activeWatchId = 0;
         }
     }
 
-    _isActivityEvent(event) {
-        switch (event.type()) {
-        case Clutter.EventType.KEY_PRESS:
-        case Clutter.EventType.BUTTON_PRESS:
-        case Clutter.EventType.SCROLL:
-        case Clutter.EventType.TOUCH_BEGIN:
-        case Clutter.EventType.MOTION:
-            return true;
-        default:
-            return false;
+    _addIdleWatch(timeoutMs, callback) {
+        try {
+            if (this._idleMonitor.add_idle_watch_full && Meta.IdleMonitorWatchFlags) {
+                return this._idleMonitor.add_idle_watch_full(
+                    timeoutMs,
+                    callback,
+                    Meta.IdleMonitorWatchFlags.UNINHIBITABLE
+                );
+            }
+        } catch (e) {
+            console.error(`Keyboard Light Timer: uninhibitable watch failed: ${e.message}`);
         }
+        return this._idleMonitor.add_idle_watch(timeoutMs, callback);
     }
 
-    _ensureActivityWatch() {
-        if (this._stageHandler)
-            return;
+    _schedule() {
+        this._clearWatches();
 
-        this._stageHandler = global.stage.connect('captured-event', (_actor, event) => {
-            if (this._isActivityEvent(event))
-                this._noteActivity();
-            return Clutter.EVENT_PROPAGATE;
-        });
-    }
-
-    _noteActivity() {
-        this._lastActivityUs = GLib.get_monotonic_time();
-        if (this._dimmedByUs)
-            this._onActive();
-    }
-
-    _startPoll() {
-        if (this._pollSource)
-            return;
-
-        this._pollSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
-            this._onPoll();
-            return GLib.SOURCE_CONTINUE;
-        });
-    }
-
-    _stopPoll() {
-        if (!this._pollSource)
-            return;
-        GLib.source_remove(this._pollSource);
-        this._pollSource = 0;
-    }
-
-    _onPoll() {
-        if (this._dimmedByUs || !this._settings || !this._proxy)
+        if (!this._idleMonitor || !this._proxy || !this._settings)
             return;
 
         const timeoutSec = this._settings.get_int('timeout-seconds');
         if (timeoutSec <= 0)
             return;
 
-        const idleMs = (GLib.get_monotonic_time() - this._lastActivityUs) / 1000;
-        if (idleMs >= timeoutSec * 1000)
-            this._dimNow();
-    }
-
-    _schedule() {
-        this._stopPoll();
-
-        if (!this._proxy || !this._settings)
-            return;
-
-        const timeoutSec = this._settings.get_int('timeout-seconds');
-        if (timeoutSec <= 0) {
-            this._clearWatches();
-            return;
-        }
-
         const brightness = this._proxy.Brightness;
         if (!Number.isInteger(brightness) || brightness < 0)
             return;
 
         // Light is off by the user — do not wait, do not loop.
-        if (brightness <= 0 && !this._dimmedByUs) {
-            this._clearWatches();
+        if (brightness <= 0 && !this._dimmedByUs)
+            return;
+
+        // Already dimmed: wait for compositor-level input (typing in any app).
+        if (this._dimmedByUs) {
+            this._watchActivity();
             return;
         }
 
-        this._ensureActivityWatch();
+        this._idleWatchId = this._addIdleWatch(timeoutSec * 1000, () => {
+            this._idleWatchId = 0;
+            this._dimNow();
+        });
+    }
 
-        // Already dimmed: only wait for the next key/mouse event.
-        if (this._dimmedByUs)
+    _watchActivity() {
+        if (!this._idleMonitor || this._activeWatchId)
             return;
 
-        this._startPoll();
+        this._activeWatchId = this._idleMonitor.add_user_active_watch(() => {
+            this._activeWatchId = 0;
+            this._onActive();
+        });
     }
 
     _dimNow() {
-        this._stopPoll();
-
         const brightness = this._proxy?.Brightness;
         if (Number.isInteger(brightness) && brightness > 0) {
             this._savedBrightness = brightness;
@@ -348,7 +319,7 @@ export default class KeyboardLightTimerExtension extends Extension {
             this._setBrightness(0);
         }
 
-        this._ensureActivityWatch();
+        this._watchActivity();
     }
 
     _onActive() {
