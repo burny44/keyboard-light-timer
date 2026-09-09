@@ -12,6 +12,7 @@ Compatible with **GNOME Shell 45–50**.
 
 - Hooks into GNOME’s existing Keyboard Quick Settings menu (no extra panel icon)
 - Horizontal timeout slider: **Never** … **30 seconds**
+- Optional **Lowest level only** mode: on/off at the first brightness step, intensity slider hidden, Fn hotkey clamped to off/low
 - Uses `org.gnome.SettingsDaemon.Power.Keyboard`, the same brightness interface as the built-in slider
 - Preferences window with the same timeout slider
 
@@ -51,7 +52,7 @@ gnome-extensions enable "$UUID"
    - **Never** — light stays on until you turn it off
    - **1–30 s** — light turns off after that much idle time
 
-The same setting is available in the extension’s preferences.
+The same timeout is available in the extension’s preferences, along with **Lowest level only**.
 
 ## Uninstall
 

@@ -1,4 +1,5 @@
 import Adw from 'gi://Adw';
+import Gio from 'gi://Gio';
 import Gtk from 'gi://Gtk';
 
 import {
@@ -18,7 +19,7 @@ export default class KeyboardLightTimerPreferences extends ExtensionPreferences 
     fillPreferencesWindow(window) {
         const settings = this.getSettings();
         window.default_width = 460;
-        window.default_height = 260;
+        window.default_height = 380;
 
         const page = new Adw.PreferencesPage({
             title: 'General',
@@ -75,5 +76,12 @@ export default class KeyboardLightTimerPreferences extends ExtensionPreferences 
             scale.set_value(value);
             syncing = false;
         });
+
+        const lowOnly = new Adw.SwitchRow({
+            title: 'Lowest level only',
+            subtitle: 'Keep the backlight at the first on-level (low). Hides the intensity control in Quick Settings. The keyboard hotkey only switches between off and low.',
+        });
+        settings.bind('low-only', lowOnly, 'active', Gio.SettingsBindFlags.DEFAULT);
+        group.add(lowOnly);
     }
 }

@@ -12,5 +12,14 @@
       </description>
       <range min="0" max="30"/>
     </key>
+    <key name="low-only" type="b">
+      <default>false</default>
+      <summary>Use lowest on-level only</summary>
+      <description>
+        When enabled, the keyboard backlight can only be off or at the
+        lowest brightness. The Quick Settings intensity control is hidden,
+        and the keyboard hotkey only switches between those two states.
+      </description>
+    </key>
   </schema>
 </schemalist>
