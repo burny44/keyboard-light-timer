@@ -103,6 +103,7 @@ export default class KeyboardLightTimerExtension extends Extension {
         this._lastBrightness = null;
         this._ignoreChanges = false;
         this._ignoreSource = 0;
+        this._echoBrightness = null;
         this._idleWatchId = 0;
         this._activeWatchId = 0;
         this._injectSource = 0;
@@ -151,6 +152,7 @@ export default class KeyboardLightTimerExtension extends Extension {
 
         this._dimmedByUs = false;
         this._ignoreChanges = false;
+        this._echoBrightness = null;
 
         this._proxy?.disconnectObject(this);
         this._proxy = null;
@@ -193,10 +195,7 @@ export default class KeyboardLightTimerExtension extends Extension {
         }
 
         this._injectMenu();
-        this._hookNativeToggle();
-        this._hookOsd();
-        this._applyLowOnlyUi();
-        this._clampToLowIfNeeded();
+        this._syncLowOnlyHooks();
         this._schedule();
     }
 
@@ -236,8 +235,7 @@ export default class KeyboardLightTimerExtension extends Extension {
         this._menuItems.push(this._sliderItem);
 
         this._syncSlider();
-        this._hookNativeToggle();
-        this._applyLowOnlyUi();
+        this._syncLowOnlyHooks();
     }
 
     _removeMenuItems() {
@@ -266,15 +264,43 @@ export default class KeyboardLightTimerExtension extends Extension {
     }
 
     _onLowOnlyChanged() {
-        const toggle = this._getKeyboardToggle();
-        if (!this._isLowOnly() && toggle?._kltOriginalSync)
-            toggle._kltOriginalSync();
-
-        this._applyLowOnlyUi();
-        this._clampToLowIfNeeded();
+        this._syncLowOnlyHooks();
         if (this._savedBrightness > 0 && this._isLowOnly())
             this._savedBrightness = this._getLowLevel();
         this._schedule();
+    }
+
+    _syncLowOnlyHooks() {
+        if (this._isLowOnly()) {
+            this._hookNativeToggle();
+            this._hookOsd();
+            this._applyLowOnlyUi();
+            this._clampToLowIfNeeded();
+            return;
+        }
+
+        this._unhookOsd();
+        this._unhookNativeToggle();
+        this._restoreNativeLevelsUi();
+    }
+
+    _restoreNativeLevelsUi() {
+        const toggle = this._getKeyboardToggle();
+        if (!toggle)
+            return;
+
+        try {
+            toggle._sync();
+        } catch (_e) {
+            // Native widget may already be gone.
+        }
+
+        const steps = this._proxy?.Steps;
+        const useSlider = Number.isInteger(steps) && steps >= 4;
+        if (toggle._sliderItem)
+            toggle._sliderItem.visible = useSlider;
+        if (toggle._discreteItem)
+            toggle._discreteItem.visible = !useSlider;
     }
 
     _clampToLowIfNeeded() {
@@ -451,11 +477,14 @@ export default class KeyboardLightTimerExtension extends Extension {
 
     _addIdleWatch(timeoutMs, callback) {
         try {
+            let flags = Meta.IdleMonitorWatchFlags.UNINHIBITABLE;
+            if (Meta.IdleMonitorWatchFlags.START_NOW !== undefined)
+                flags |= Meta.IdleMonitorWatchFlags.START_NOW;
             if (this._idleMonitor.add_idle_watch_full && Meta.IdleMonitorWatchFlags) {
                 return this._idleMonitor.add_idle_watch_full(
                     timeoutMs,
                     callback,
-                    Meta.IdleMonitorWatchFlags.UNINHIBITABLE
+                    flags
                 );
             }
         } catch (e) {
@@ -534,34 +563,31 @@ export default class KeyboardLightTimerExtension extends Extension {
         const target = Math.round(value);
         if (this._proxy.Brightness === target) {
             this._lastBrightness = target;
+            this._echoBrightness = null;
             return;
         }
 
-        this._ignoreChanges = true;
-        if (this._ignoreSource) {
-            GLib.source_remove(this._ignoreSource);
-            this._ignoreSource = 0;
-        }
+        this._echoBrightness = target;
 
         try {
             this._proxy.Brightness = target;
             this._lastBrightness = target;
         } catch (e) {
+            this._echoBrightness = null;
             console.error(`Keyboard Light Timer: set brightness failed: ${e.message}`);
         }
-
-        this._ignoreSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 400, () => {
-            this._ignoreChanges = false;
-            this._ignoreSource = 0;
-            return GLib.SOURCE_REMOVE;
-        });
     }
 
     _onBrightnessChanged(brightness) {
         if (!Number.isInteger(brightness) || brightness < 0)
             return;
-        if (this._ignoreChanges)
-            return;
+
+        if (this._echoBrightness !== null) {
+            const echo = this._echoBrightness;
+            this._echoBrightness = null;
+            if (brightness === echo)
+                return;
+        }
 
         if (this._isLowOnly() && this._handleLowOnlyHotkey(brightness))
             return;
