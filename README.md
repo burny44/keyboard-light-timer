@@ -13,6 +13,7 @@ Compatible with **GNOME Shell 45–50**.
 - Hooks into GNOME’s existing Keyboard Quick Settings menu (no extra panel icon)
 - Horizontal timeout slider: **Never** … **30 seconds**
 - Optional **Lowest level only** mode: on/off at the first brightness step, intensity slider hidden, Fn hotkey clamped to off/low
+- Restores the last brightness you chose (including off) at login, even if the timer had turned the light off before shutdown
 - Uses `org.gnome.SettingsDaemon.Power.Keyboard`, the same brightness interface as the built-in slider
 - Preferences window with the same timeout slider
 

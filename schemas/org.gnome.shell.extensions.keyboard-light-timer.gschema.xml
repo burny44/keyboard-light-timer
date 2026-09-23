@@ -21,5 +21,14 @@
         and the keyboard hotkey only switches between those two states.
       </description>
     </key>
+    <key name="last-brightness" type="i">
+      <default>-1</default>
+      <summary>Last brightness chosen by the user</summary>
+      <description>
+        Restored at login, so the timer turning the light off before
+        shutdown does not leave it off at the next boot. -1 means unknown.
+      </description>
+      <range min="-1" max="100"/>
+    </key>
   </schema>
 </schemalist>

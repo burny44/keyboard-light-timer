@@ -14,6 +14,10 @@ const BUS_NAME = 'org.gnome.SettingsDaemon.Power';
 const OBJECT_PATH = '/org/gnome/SettingsDaemon/Power';
 const TIMEOUT_MAX_SECONDS = 30;
 
+// GNOME disables and re-enables extensions around the lock screen; the
+// startup action must only run once per shell session.
+let startupHandled = false;
+
 function loadInterfaceXML(iface) {
     const uri = `resource:///org/gnome/shell/dbus-interfaces/${iface}.xml`;
     const file = Gio.File.new_for_uri(uri);
@@ -194,9 +198,38 @@ export default class KeyboardLightTimerExtension extends Extension {
                 this._savedBrightness = brightness;
         }
 
+        this._applyStartupBrightness();
+
         this._injectMenu();
         this._syncLowOnlyHooks();
         this._schedule();
+    }
+
+    _applyStartupBrightness() {
+        if (startupHandled)
+            return;
+        startupHandled = true;
+
+        let target = this._settings.get_int('last-brightness');
+        if (target < 0) {
+            this._rememberBrightness(this._proxy.Brightness);
+            return;
+        }
+        if (target > 0 && this._isLowOnly())
+            target = this._getLowLevel();
+        if (this._proxy.Brightness === target)
+            return;
+
+        this._setBrightness(target);
+        if (target > 0)
+            this._savedBrightness = target;
+    }
+
+    _rememberBrightness(brightness) {
+        if (!this._settings || brightness < 0)
+            return;
+        if (this._settings.get_int('last-brightness') !== brightness)
+            this._settings.set_int('last-brightness', brightness);
     }
 
     _getKeyboardToggle() {
@@ -589,8 +622,10 @@ export default class KeyboardLightTimerExtension extends Extension {
                 return;
         }
 
-        if (this._isLowOnly() && this._handleLowOnlyHotkey(brightness))
+        if (this._isLowOnly() && this._handleLowOnlyHotkey(brightness)) {
+            this._rememberBrightness(this._lastBrightness);
             return;
+        }
 
         if (brightness === this._lastBrightness)
             return;
@@ -600,6 +635,7 @@ export default class KeyboardLightTimerExtension extends Extension {
         if (this._dimmedByUs) {
             if (brightness <= 0)
                 return;
+            this._rememberBrightness(brightness);
 
             // User or firmware turned the light back on while we had dimmed it.
             this._dimmedByUs = false;
@@ -607,6 +643,8 @@ export default class KeyboardLightTimerExtension extends Extension {
             this._schedule();
             return;
         }
+
+        this._rememberBrightness(brightness);
 
         if (brightness > 0) {
             this._savedBrightness = this._isLowOnly() ? this._getLowLevel() : brightness;
