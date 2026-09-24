@@ -174,8 +174,13 @@ export default class KeyboardLightTimerExtension extends Extension {
             'g-properties-changed',
             (_proxy, changed) => {
                 const unpacked = changed.deep_unpack();
-                if ('Brightness' in unpacked)
-                    this._onBrightnessChanged(this._proxy.Brightness);
+                if (!('Brightness' in unpacked))
+                    return;
+                if (!startupHandled) {
+                    this._applyStartupBrightness();
+                    return;
+                }
+                this._onBrightnessChanged(this._proxy.Brightness);
             },
             this
         );
@@ -208,21 +213,31 @@ export default class KeyboardLightTimerExtension extends Extension {
     _applyStartupBrightness() {
         if (startupHandled)
             return;
+
+        // gnome-shell starts before gsd-power; wait until it reports a value.
+        const current = this._proxy.Brightness;
+        if (!Number.isInteger(current) || current < 0)
+            return;
         startupHandled = true;
+
+        this._lastBrightness = current;
+        if (current > 0)
+            this._savedBrightness = current;
 
         let target = this._settings.get_int('last-brightness');
         if (target < 0) {
-            this._rememberBrightness(this._proxy.Brightness);
+            this._rememberBrightness(current);
+            this._schedule();
             return;
         }
         if (target > 0 && this._isLowOnly())
             target = this._getLowLevel();
-        if (this._proxy.Brightness === target)
-            return;
 
-        this._setBrightness(target);
+        if (current !== target)
+            this._setBrightness(target);
         if (target > 0)
             this._savedBrightness = target;
+        this._schedule();
     }
 
     _rememberBrightness(brightness) {
