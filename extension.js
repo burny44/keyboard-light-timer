@@ -551,7 +551,11 @@ export default class KeyboardLightTimerExtension extends Extension {
         if (timeoutSec <= 0)
             return;
 
-        const brightness = this._proxy.Brightness;
+        // Prefer lastBrightness: after we set the light, the D-Bus cache can
+        // still be 0 until PropertiesChanged arrives.
+        let brightness = this._lastBrightness;
+        if (!Number.isInteger(brightness) || brightness < 0)
+            brightness = this._proxy.Brightness;
         if (!Number.isInteger(brightness) || brightness < 0)
             return;
 
@@ -633,8 +637,12 @@ export default class KeyboardLightTimerExtension extends Extension {
         if (this._echoBrightness !== null) {
             const echo = this._echoBrightness;
             this._echoBrightness = null;
-            if (brightness === echo)
+            if (brightness === echo) {
+                this._lastBrightness = brightness;
+                if (brightness > 0)
+                    this._schedule();
                 return;
+            }
         }
 
         if (this._isLowOnly() && this._handleLowOnlyHotkey(brightness)) {
